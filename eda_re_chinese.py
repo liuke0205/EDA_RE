@@ -14,44 +14,127 @@ stop_words = list()
 for stop_word in f.readlines():
     stop_words.append(stop_word[:-1])
 
+#生成实体和类型的映射字典
+entity_type = dict()
+f = open('data/entity_type.txt', 'r', encoding='utf-8')
+for data in f.readlines():
+    data_list = data.split("\t")
+    entity_type[data_list[0]] = data_list[1][0:-1]
 
+
+# 计算阶乘
+def func(n):
+    if n <= 1:
+        return 1
+    else:
+        return (n * func(n - 1))
 '''
-同义词替换：替换一个语句中的n个单词为其同义词，如果替换的词出现在三元组中，那么三元组也需要替换
+实体替换：：随机用若干个实体类型相同的实体替代已标数据中的实体
 '''
-def synonym_replacement(words, n, spo_list):
-    new_words = words.copy()
-    new_spo_list = spo_list.copy()
-    random_word_list = list(set([word for word in words if word not in stop_words]))     
-    random.shuffle(random_word_list)
-    num_replaced = 0
-    for random_word in random_word_list:          
-        synonyms = get_synonyms(random_word)
+def entity_replace(sentence, n, spo_list, entity_list):
+    try:
+        new_spo_list = spo_list.copy()
+        augmented_sentence = sentence
 
-        if len(synonyms) >= 1:
-            num_replaced += 1
+        for _ in range(n):
+            #随机选一个实体
+            old_entity = random.choice(entity_list)
+            random_entity_list = []
+            #获取和old_entity实体类型相同的所有实体
+            for key, value in entity_type.items():
+                if value == entity_type[old_entity]:
+                    random_entity_list.append(key)
 
-            synonym = random.choice(synonyms)   
-            new_words = [synonym if word == random_word else word for word in new_words]
+            #随机从类型相同实体列表中选择一个实体
+            new_entity = random.choice(random_entity_list)
 
+            #更新sentence
+            augmented_sentence = augmented_sentence.replace(old_entity, new_entity)
+
+            #更新spo_list
             for spo in new_spo_list:
-                if spo[0] == random_word:
-                    new_spo_list[new_spo_list.index(spo)] = [synonym, spo[1], spo[2]]
-                if random_word == spo[2]:
-                    new_spo_list[new_spo_list.index(spo)] = [spo[0], spo[1], synonym]
+                if spo[0] == old_entity:
+                    new_spo_list[new_spo_list.index(spo)] = [new_entity, spo[1], spo[2], spo[3], spo[4]]
+                elif old_entity == spo[2]:
+                    new_spo_list[new_spo_list.index(spo)] = [spo[0], spo[1], new_entity, spo[3], spo[4]]
 
-        if num_replaced >= n: 
-            break
+        return augmented_sentence, new_spo_list
+    except:
+        return "", []
+'''
+分句换位：随机交换同一个样本之间的两个分句
+'''
+def clause_transposition(sentence):
+    try:
+        clause_sentences = str(sentence).split("；")
+        global random_idx_1, random_idx_2
 
-    sentence = ' '.join(new_words)
-    new_words = sentence.split(' ')
+        while True:
+            random_idx_1 = random.randint(0, len(clause_sentences) - 1)
+            random_idx_2 = random.randint(0, len(clause_sentences) - 1)
+            if random_idx_1 != random_idx_2:
+                break
+        clause_sentences[random_idx_1], clause_sentences[random_idx_2] = clause_sentences[random_idx_2], clause_sentences[random_idx_1]
 
-    return new_words, new_spo_list
+        new_clause_sentence = []
+        # 去除原来分句中后面的；和。
+        for sentence in clause_sentences:
+            sentence = sentence.strip("；")
+            sentence = sentence.strip("。")
+            new_clause_sentence.append(sentence)
 
+        return "；".join(new_clause_sentence) + "。"
+    except:
+        return ""
+'''
+顿号换位
+'''
+# def get_commd_idx(words):
+#     idx_list = set()
+#     for i in range(len(words)):
+#         word = words[i]
+#         if word == "、":
+#             idx_list.add(i - 1)
+#             idx_list.add(i + 1)
+#     return list(idx_list)
+#
+# def commd_transposition(sentence):
+#     words = sentence.split("、")
+#     commd_idx_list = get_commd_idx(words)
+#
+#     global random_idx_1, random_idx_2
+#     while True:
+#         random_idx_1 = random.choice(commd_idx_list)
+#         random_idx_2 = random.choice(commd_idx_list)
+#         if random_idx_1 != random_idx_2:
+#             break
+#     words[random_idx_1], words[random_idx_2] = words[random_idx_2], words[random_idx_1]
+#     return words
 
-def get_synonyms(word):
-    return synonyms.nearby(word)[0]
+'''
+短句生成
+'''
+def sentence_generation(sentence, n_sg, spo_list):
+    try:
+        global j, i
+        spo = random.choice(spo_list)
+        head_entity_idx = str(sentence).index(spo[0])
+        tail_entity_idx = str(sentence).index(spo[2])
+        start = min(head_entity_idx, tail_entity_idx)
+        end = max(head_entity_idx + len(spo[0]), tail_entity_idx + len(spo[2]))
+        for i in range(start, -1, -1):
+            if sentence[i] in ['，', '。', '；', '!']:
+                break
+        for j in range(end, len(sentence), 1):
+            if sentence[j] in ['，', '。', '；', '!']:
+                break
 
-
+        if i == 0:
+            return sentence[i:j], [spo]
+        else:
+            return sentence[i+1:j], [spo]
+    except:
+        return "", []
 '''
 EDA函数
 '''
@@ -63,126 +146,69 @@ def eda_re(sentence, spo_list, alpha_sr=0.1, alpha_ri=0.1, alpha_rs=0.1, p_rd=0.
 
     augmented_sentences = []
     spo_lists = []
+
+    entity_list = []
+    for spo in spo_list:
+        entity_list.append(spo[0])
+        entity_list.append(spo[2])
+
+    # 实体替换er
     num_new_per_technique = int(num_aug/4)+1
-    n_sr = max(1, int(alpha_sr * num_words))
-    n_ri = max(1, int(alpha_ri * num_words))
-    n_rs = max(1, int(alpha_rs * num_words))
-
-
-    print(num_new_per_technique)
-    #同义词替换sr
+    n_er = max(1, int(alpha_ri * len(spo_list) * 2))
     for _ in range(num_new_per_technique):
-        a_words, spo_list_new = synonym_replacement(words, n_sr, spo_list)
-        augmented_sentences.append(' '.join(a_words))
-        spo_lists.append(spo_list_new)
+        augmented_sentence, spo_list_new = entity_replace(sentence, n_er, spo_list, entity_list)
+        if len(augmented_sentence) > 0 and len(spo_list_new) > 0:
+            augmented_sentences.append(augmented_sentence)
+            spo_lists.append(spo_list_new)
 
-    # #随机插入ri
-    # for _ in range(num_new_per_technique):
-    #     a_words = random_insertion(words, n_ri)
-    #     augmented_sentences.append(' '.join(a_words))
-    #
-    # #随机交换rs
-    # for _ in range(num_new_per_technique):
-    #     a_words = random_swap(words, n_rs)
-    #     augmented_sentences.append(' '.join(a_words))
-    #
-    #
-    # #随机删除rd
-    # for _ in range(num_new_per_technique):
-    #     a_words = random_deletion(words, p_rd)
-    #     augmented_sentences.append(' '.join(a_words))
-    
-    #print(augmented_sentences)
-    # shuffle(augmented_sentences)
+    # 分句换位ct
+    cnt = str(sentence).count("；")
+    num_new_clause_transposition = func(cnt + 1) - 1
+    for _ in range(num_new_clause_transposition):
+        augmented_sentence = clause_transposition(sentence)
+        if len(augmented_sentence) > 0:
 
-    if num_aug >= 1:
-        augmented_sentences = augmented_sentences[:num_aug]
-    else:
-        keep_prob = num_aug / len(augmented_sentences)
-        augmented_sentences = [s for s in augmented_sentences if random.uniform(0, 1) < keep_prob]
+            augmented_sentences.append(augmented_sentence)
+            spo_lists.append(spo_list)
 
-    augmented_sentences.append(seg_list)
-    spo_lists.append(spo_list)
+    # 顿句换位ct
+    # cnt = str(sentence).count("、")
+    # num_new_commd_transposition = func(cnt - 1) - 1
+    # print(num_new_commd_transposition)
+    # print(words)
+    # for _ in range(num_new_commd_transposition):
+    #     augmented_sentence = commd_transposition(sentence)
+    #     augmented_sentences.append(augmented_sentence)
+    #     spo_lists.append(spo_list)
 
+    # 短句生成 sg
+    num_new_per_technique = int(num_aug / 4) + 1
+    n_sg = max(1, len(spo_list))
+    for _ in range(num_new_per_technique):
+        augmented_sentence, spo_list_new = sentence_generation(sentence, n_sg, spo_list)
+        if len(augmented_sentence) > 0 and len(spo_list_new) > 0:
+            augmented_sentences.append(augmented_sentence)
+            spo_lists.append(spo_list_new)
+
+
+    # if num_aug >= 1:
+    #     augmented_sentences = augmented_sentences[:num_aug]
+    # else:
+    #     keep_prob = num_aug / len(augmented_sentences)
+    #     augmented_sentences = [s for s in augmented_sentences if random.uniform(0, 1) < keep_prob]
+    print(len(augmented_sentences))
+    print(len(spo_lists))
+
+    # 对数据增强后的样本进行去重
+    # sentence_set = set()
+    # for _ in range(len(augmented_sentences)):
+    #     augmented_sentence = augmented_sentences[_]
+    #     spo_list = spo_lists[_]
+    #     if augmented_sentence in sentence_set:
+    #         spo_lists.remove(spo_list)
+    #         augmented_sentences.remove(augmented_sentence)
+    #     else:
+    #         sentence_set.add(augmented_sentence)
+
+    #返回增强的文本数据augmented_sentences和spo_lists
     return augmented_sentences, spo_lists
-
-##
-#测试用例
-#eda(sentence="我们就像蒲公英，我也祈祷着能和你飞去同一片土地")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-'''
-随机插入：随机在语句中插入n个词
-'''
-def random_insertion(words, n):
-    new_words = words.copy()
-    for _ in range(n):
-        add_word(new_words)
-    return new_words
-
-def add_word(new_words):
-    synonyms = []
-    counter = 0
-    while len(synonyms) < 1:
-        random_word = new_words[random.randint(0, len(new_words)-1)]
-        synonyms = get_synonyms(random_word)
-        counter += 1
-        if counter >= 10:
-            return
-    random_synonym = random.choice(synonyms)
-    random_idx = random.randint(0, len(new_words)-1)
-    new_words.insert(random_idx, random_synonym)
-
-
-'''
-随机交换
-'''
-def random_swap(words, n):
-    new_words = words.copy()
-    for _ in range(n):
-        new_words = swap_word(new_words)
-    return new_words
-
-def swap_word(new_words):
-    random_idx_1 = random.randint(0, len(new_words)-1)
-    random_idx_2 = random_idx_1
-    counter = 0
-    while random_idx_2 == random_idx_1:
-        random_idx_2 = random.randint(0, len(new_words)-1)
-        counter += 1
-        if counter > 3:
-            return new_words
-    new_words[random_idx_1], new_words[random_idx_2] = new_words[random_idx_2], new_words[random_idx_1]
-    return new_words
-
-'''
-随机删除：以概率p删除语句中的词
-'''
-def random_deletion(words, p):
-
-    if len(words) == 1:
-        return words
-
-    new_words = []
-    for word in words:
-        r = random.uniform(0, 1)
-        if r > p:
-            new_words.append(word)
-
-    if len(new_words) == 0:
-        rand_int = random.randint(0, len(words)-1)
-        return [words[rand_int]]
-
-    return new_words
