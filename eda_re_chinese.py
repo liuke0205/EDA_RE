@@ -167,7 +167,6 @@ def eda_re(sentence, spo_list, alpha_sr=0.1, alpha_ri=0.1, alpha_rs=0.1, p_rd=0.
     for _ in range(num_new_clause_transposition):
         augmented_sentence = clause_transposition(sentence)
         if len(augmented_sentence) > 0:
-
             augmented_sentences.append(augmented_sentence)
             spo_lists.append(spo_list)
 

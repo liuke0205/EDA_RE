@@ -20,7 +20,6 @@ f = open('data/entity_type.txt', 'r', encoding='utf-8')
 for data in f.readlines():
     data_list = data.split("\t")
     entity_type[data_list[0]] = data_list[1][0:-1]
-print(entity_type)
 
 '''
 同义词替换：替换一个语句中的n个单词为其同义词，如果替换的词出现在三元组中，那么三元组也需要替换
@@ -77,10 +76,9 @@ def add_word(new_words, entity_list):
     synonyms = []
     counter = 0
     while len(synonyms) < 1:
-        while True:
-            random_word = new_words[random.randint(0, len(new_words)-1)]
-            if (random_word not in entity_list) and (random_word not in stop_words):
-                break
+        random_word = new_words[random.randint(0, len(new_words)-1)]
+        if (random_word in entity_list) or (random_word in stop_words):
+            continue
         synonyms = get_synonyms(random_word)
         counter += 1
         if counter >= 10:
@@ -97,25 +95,28 @@ def random_swap(words, n, entity_list):
     try:
         new_words = words.copy()
         for _ in range(n):
-            swap_word(new_words, entity_list)
+            new_words = swap_word(new_words, entity_list)
         return new_words
     except:
         return []
 
 def swap_word(new_words, entity_list):
+    print(new_words)
     global random_idx_1, random_idx_2
-
-    while True:
-        random_idx_1 = random.randint(0, len(new_words) - 1)
+    counter = 0
+    random_idx_1 = random.randint(0, len(new_words) - 1)
+    random_idx_2 = random_idx_1
+    while random_idx_1 != random_idx_2:
         random_idx_2 = random.randint(0, len(new_words) - 1)
         random_word_1 = new_words[random_idx_1]
         random_word_2 = new_words[random_idx_2]
-
-        if random_idx_1 != random_idx_2:
-            if (random_word_1 not in entity_list) and (random_word_2 not in entity_list):
-                break
+        if (random_word_1 not in entity_list) and (random_word_2 not in entity_list):
+            break
+        counter += 1
+        if counter > 3:
+            return new_words
     new_words[random_idx_1], new_words[random_idx_2] = new_words[random_idx_2], new_words[random_idx_1]
-
+    return new_words
 
 '''
 随机删除：以概率p删除语句中的词
@@ -201,15 +202,19 @@ def eda_ner(sentence, spo_list, alpha_sr=0.1, alpha_ri=0.1, alpha_rs=0.1, p_rd=0
 
 
     #对数据增强后的样本进行去重
-    # sentence_set = set()
-    # for _ in range(len(augmented_sentences)):
-    #     augmented_sentence = augmented_sentences[_]
-    #     spo_list = spo_lists[_]
-    #     if augmented_sentence in sentence_set:
-    #         spo_lists.remove(spo_list)
-    #         augmented_sentences.remove(augmented_sentence)
-    #     else:
-    #         sentence_set.add(augmented_sentence)
+    sentence_set = set()
 
-    #返回增强的文本数据augmented_sentences和spo_lists
-    return augmented_sentences, spo_lists
+    res_augmented = []
+    res_spo_list = []
+    for _ in range(len(augmented_sentences)):
+        augmented_sentence = augmented_sentences[_]
+        spo_list = spo_lists[_]
+        if augmented_sentence not in sentence_set:
+            res_augmented.append(augmented_sentence)
+            res_spo_list.append(spo_list)
+            sentence_set.add(augmented_sentence)
+
+    print(res_augmented)
+    print(res_spo_list)
+    #返回增强的文本数据res_augmented和res_spo_list
+    return res_augmented, res_spo_list

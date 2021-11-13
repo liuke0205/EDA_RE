@@ -99,7 +99,7 @@ if __name__ == "__main__":
         alpha = args.alpha
 
     #生成实体和实体类型文件，存储到本地
-    gen_entity_type("data/dev_data.json")
+    gen_entity_type(args.input)
 
     #执行函数
     gen_eda(args.input, output_file=output, alpha=alpha, num_aug=num_aug)
